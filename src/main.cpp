@@ -77,7 +77,7 @@ int main() {
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
     string sdata = string(data).substr(0, length);
-    cout << sdata << endl;
+//     cout << sdata << endl;
     if (sdata.size() > 2 && sdata[0] == '4' && sdata[1] == '2') {
       string s = hasData(sdata);
       if (s != "") {
@@ -85,13 +85,30 @@ int main() {
         string event = j[0].get<string>();
         if (event == "telemetry") {
           // j[1] is the data JSON object
-          vector<double> ptsx = j[1]["ptsx"];
-          vector<double> ptsy = j[1]["ptsy"];
+          const vector<double> ptsx = j[1]["ptsx"];
+          const vector<double> ptsy = j[1]["ptsy"];
           double px = j[1]["x"];
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
 
+          Eigen::VectorXd eigen_ptsx(int(ptsx.size()));
+          Eigen::VectorXd eigen_ptsy(int(ptsy.size()));
+          for (unsigned int i = 0; i < ptsx.size(); i++) {
+            const double x_diff =  ptsx[i] - px;
+            const double y_diff = ptsy[i] - py;
+            eigen_ptsx(i) = x_diff * cos(-psi) - y_diff * sin(-psi);
+            eigen_ptsy(i) = x_diff * sin(-psi) + y_diff * cos(-psi);
+          }
+          auto coeffs = polyfit(eigen_ptsx, eigen_ptsy, 3);
+                 
+          double cte = polyeval(coeffs, px) - py;
+          
+          double epsi = psi - atan(coeffs[1]);
+          
+          Eigen::VectorXd state(6);
+          state << 0, 0, 0, v, cte, epsi;
+          
           /*
           * TODO: Calculate steering angle and throttle using MPC.
           *
@@ -101,6 +118,12 @@ int main() {
           double steer_value;
           double throttle_value;
 
+          std::vector<double> solution = mpc.Solve(state, coeffs);
+          printf("post solve");
+          
+          steer_value = solution[6]/deg2rad(25);
+          throttle_value = solution[7];
+            
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
