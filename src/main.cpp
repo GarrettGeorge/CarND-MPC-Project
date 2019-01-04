@@ -85,26 +85,33 @@ int main() {
         string event = j[0].get<string>();
         if (event == "telemetry") {
           // j[1] is the data JSON object
-          const vector<double> ptsx = j[1]["ptsx"];
-          const vector<double> ptsy = j[1]["ptsy"];
+          vector<double> ptsx = j[1]["ptsx"];
+          vector<double> ptsy = j[1]["ptsy"];
           double px = j[1]["x"];
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
 
-          Eigen::VectorXd eigen_ptsx(int(ptsx.size()));
-          Eigen::VectorXd eigen_ptsy(int(ptsy.size()));
-          for (unsigned int i = 0; i < ptsx.size(); i++) {
+          vector<double> pts_x;
+          vector<double> pts_y;
+          for (int i = 0; i < ptsx.size(); i++) {
             const double x_diff =  ptsx[i] - px;
             const double y_diff = ptsy[i] - py;
-            eigen_ptsx(i) = x_diff * cos(-psi) - y_diff * sin(-psi);
-            eigen_ptsy(i) = x_diff * sin(-psi) + y_diff * cos(-psi);
+            pts_x.push_back(x_diff * cos(-psi) - y_diff * sin(-psi));
+            pts_y.push_back(x_diff * sin(-psi) + y_diff * cos(-psi));
           }
+          
+          double *ptrx = &pts_x[0];
+          Eigen::Map<Eigen::VectorXd> eigen_ptsx(ptrx, 6);
+
+          double *ptry = &pts_y[0];
+          Eigen::Map<Eigen::VectorXd> eigen_ptsy(ptry, 6);
+          
           auto coeffs = polyfit(eigen_ptsx, eigen_ptsy, 3);
                  
-          double cte = polyeval(coeffs, px) - py;
+          double cte = polyeval(coeffs, 0);
           
-          double epsi = psi - atan(coeffs[1]);
+          double epsi = -atan(coeffs[1]);
           
           Eigen::VectorXd state(6);
           state << 0, 0, 0, v, cte, epsi;
@@ -119,11 +126,12 @@ int main() {
           double throttle_value;
 
           std::vector<double> solution = mpc.Solve(state, coeffs);
-          printf("post solve");
+                    
+          steer_value = solution[0]/deg2rad(25);
+          throttle_value = solution[1];
           
-          steer_value = solution[6]/deg2rad(25);
-          throttle_value = solution[7];
-            
+          printf("steer value = %f, throttle value = %f\n", steer_value, throttle_value);
+          
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
@@ -137,6 +145,15 @@ int main() {
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Green line
 
+          for (size_t i = 2; i < solution.size(); i ++) {
+            if (i % 2 == 0) {
+              mpc_x_vals.push_back(solution[i]);
+            }
+            else {
+              mpc_y_vals.push_back(solution[i]);
+            }
+          }
+          
           msgJson["mpc_x"] = mpc_x_vals;
           msgJson["mpc_y"] = mpc_y_vals;
 
@@ -147,12 +164,17 @@ int main() {
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line
 
+          for (double i = 0; i < 100; i += 3){
+            next_x_vals.push_back(i);
+            next_y_vals.push_back(polyeval(coeffs, i));
+          }
+          
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
 
 
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
-          std::cout << msg << std::endl;
+//           std::cout << msg << std::endl;
           // Latency
           // The purpose is to mimic real driving conditions where
           // the car does actuate the commands instantly.
