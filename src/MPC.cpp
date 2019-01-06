@@ -60,7 +60,7 @@ class FG_eval {
     for (unsigned int t = 0; t < N - 1; t++) {
       fg[0] += 150 * CppAD::pow(vars[delta_start + t], 2);
       fg[0] += 50 * CppAD::pow(vars[a_start + t], 2);
-      fg[0] += 100 * CppAD::pow(vars[a_start + t] * vars[cte_start + 1], 2);
+      fg[0] += 100 * CppAD::pow(vars[v_start + t] * vars[cte_start + t], 2);
     }
     
     // Minimize the value gap between sequential actuations, smoothes ride
